@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "A version is proposed only once it has been public for seven days, so that a release pulled or fixed in its first week never reaches a branch. internalChecksFilter is already strict by default; it is stated so that the wait is read here as holding back the branch and the pull request themselves, not only a status check on them",
+  "extends": ["config:recommended"],
+  "timezone": "Asia/Tokyo",
+  "dependencyDashboard": true,
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "platformAutomerge": false,
+  "packageRules": [
+    {
+      "description": "Patch and digest updates, the first pin of a digest included, are merged by Renovate itself once the checks on its branch pass. The Image workflow builds the image on every pull request, and the build runs go test, so a green check means the new version builds and passes the test. Minor and major updates only open a pull request, to be read and merged by hand. platformAutomerge is off so that the merge waits on Renovate seeing the checks green: a branch with no checks at all, or only Renovate's own, is never green to it, and so is never merged",
+      "matchUpdateTypes": ["patch", "digest", "pin", "pinDigest"],
+      "automerge": true
+    },
+    {
+      "description": "The base images of the Dockerfile are pinned to a digest, so that an image built twice from the same commit is built on the same base, and a rebuilt base arrives as a pull request whose checks build the image again",
+      "matchManagers": ["dockerfile"],
+      "pinDigests": true
+    },
+    {
+      "description": "The Go that builds the image (the golang image of the Dockerfile) and the Go that go.mod asks for move together on purpose. Grouping them puts both on one branch, so that a new Go release raises both in one pull request",
+      "matchDepNames": ["go", "golang"],
+      "matchManagers": ["dockerfile", "gomod"],
+      "groupName": "go"
+    },
+    {
+      "description": "Workflows are already read by the github-actions manager. Grouping them keeps a handful of actions from arriving as a handful of pull requests, since they are updated together and reviewed the same way",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    }
+  ]
+}
