@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": "A version is proposed only once it has been public for seven days, so that a release pulled or fixed in its first week never reaches a branch. internalChecksFilter is already strict by default; it is stated so that the wait is read here as holding back the branch and the pull request themselves, not only a status check on them",
-  "extends": ["config:recommended"],
+  "extends": ["config:recommended", ":semanticCommitTypeAll(chore)"],
   "timezone": "Asia/Tokyo",
   "dependencyDashboard": true,
   "minimumReleaseAge": "7 days",
@@ -9,7 +9,7 @@
   "platformAutomerge": false,
   "packageRules": [
     {
-      "description": "Patch and digest updates, the first pin of a digest included, are merged by Renovate itself once the checks on its branch pass. The Image workflow builds the image on every pull request, and the build runs go test, so a green check means the new version builds and passes the test. Minor and major updates only open a pull request, to be read and merged by hand. platformAutomerge is off so that the merge waits on Renovate seeing the checks green: a branch with no checks at all, or only Renovate's own, is never green to it, and so is never merged",
+      "description": "Patch and digest updates, the first pin of a digest included, are merged by Renovate itself once the checks on its branch pass. The Image workflow builds the image on every pull request, and the build runs go test, so a green check means the new version builds and passes the test. Minor and major updates only open a pull request, to be read and merged by hand. What is merged this way reaches a release on its own through the weekly release (the Release workflow), which tags the next patch version when everything since the latest tag is Renovate's. platformAutomerge is off so that the merge waits on Renovate seeing the checks green: a branch with no checks at all, or only Renovate's own, is never green to it, and so is never merged",
       "matchUpdateTypes": ["patch", "digest", "pin", "pinDigest"],
       "automerge": true
     },
