@@ -1,46 +1,18 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "A version is proposed only once it has been public for two days, so that a release pulled or fixed in its first days never reaches a branch. internalChecksFilter is already strict by default; it is stated so that the wait is read here as holding back the branch and the pull request themselves, not only a status check on them",
-  "extends": ["config:recommended", ":semanticCommitTypeAll(chore)"],
-  "timezone": "Asia/Tokyo",
-  "dependencyDashboard": true,
-  "minimumReleaseAge": "2 days",
-  "internalChecksFilter": "strict",
-  "platformAutomerge": false,
+  "description": "The patch, digest and pinning updates Renovate merges wait for the checks on its branch. The Image workflow builds the image on every pull request, and the build runs go test, so a green check means the new version builds and passes the test. What is merged this way reaches a release on its own through the weekly release (the Release workflow), which tags the next patch version when everything since the latest tag is Renovate's",
+  "extends": ["github>yuanying/renovate-config", "github>yuanying/renovate-config:automerge-patch"],
   "packageRules": [
-    {
-      "description": "Patch and digest updates, the first pin of a digest included, are merged by Renovate itself once the checks on its branch pass. The Image workflow builds the image on every pull request, and the build runs go test, so a green check means the new version builds and passes the test. Minor and major updates only open a pull request, to be read and merged by hand. What is merged this way reaches a release on its own through the weekly release (the Release workflow), which tags the next patch version when everything since the latest tag is Renovate's. platformAutomerge is off so that the merge waits on Renovate seeing the checks green: a branch with no checks at all, or only Renovate's own, is never green to it, and so is never merged",
-      "matchUpdateTypes": ["patch", "digest", "pin", "pinDigest"],
-      "automerge": true
-    },
     {
       "description": "The base images of the Dockerfile are pinned to a digest, so that an image built twice from the same commit is built on the same base, and a rebuilt base arrives as a pull request whose checks build the image again",
       "matchManagers": ["dockerfile"],
       "pinDigests": true
     },
     {
-      "description": "The official ubuntu image is proposed without the two-day wait. Docker Hub gives a tag's last push as its release time, and the official ubuntu tags are pushed again every day or two, so a tag would rarely look two days old and its updates would hardly ever be proposed. The image here is built on golang and distroless, not ubuntu, today; the rule is kept so that a base added later does not fall into the same trap. Docker Hub names are matched as written, so each way of writing the image is listed. The pull request's checks still have to pass",
-      "matchDatasources": ["docker"],
-      "matchPackageNames": [
-        "ubuntu",
-        "library/ubuntu",
-        "docker.io/ubuntu",
-        "docker.io/library/ubuntu",
-        "index.docker.io/ubuntu",
-        "index.docker.io/library/ubuntu"
-      ],
-      "minimumReleaseAge": null
-    },
-    {
       "description": "The Go that builds the image (the golang image of the Dockerfile) and the Go that go.mod asks for move together on purpose. Grouping them puts both on one branch, so that a new Go release raises both in one pull request",
       "matchDepNames": ["go", "golang"],
       "matchManagers": ["dockerfile", "gomod"],
       "groupName": "go"
-    },
-    {
-      "description": "Workflows are already read by the github-actions manager. Grouping them keeps a handful of actions from arriving as a handful of pull requests, since they are updated together and reviewed the same way",
-      "matchManagers": ["github-actions"],
-      "groupName": "github-actions"
     }
   ]
 }
