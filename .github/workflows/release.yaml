@@ -1,0 +1,90 @@
+name: Release
+
+# Once a week, releases the next patch version when every commit since the
+# latest vX.Y.Z tag, merge commits aside, is Renovate's and some of it changed
+# what the image is built from. Anything else is left to a person, who chooses
+# the version and pushes the tag, as before. Doing nothing is a success: the
+# run's log says why nothing was released. `go run ./hack/release-plan` asks
+# the same question on a laptop.
+#
+# A tag pushed with the run's token starts no workflow, so image.yaml would
+# never see this one. The image is pushed by calling image.yaml first, from
+# the commit about to be tagged, and the tag only follows once that succeeded:
+# a failed build leaves no tag pointing at an image that does not exist.
+# Pushing a version tag by hand still publishes through image.yaml.
+on:
+  schedule:
+    - cron: "0 0 * * 1" # Monday 09:00 JST
+  workflow_dispatch:
+
+# Each job widens this to what it alone needs: the call to image.yaml to write
+# the package, the last job to push the tag.
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    # A dispatch can name any branch, but a release is cut from main only.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      message: ${{ steps.plan.outputs.message }}
+    steps:
+      # Every tag and the history back to the latest one.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - id: plan
+        run: go run ./hack/release-plan -github-output "$GITHUB_OUTPUT"
+
+  image:
+    needs: plan
+    if: needs.plan.outputs.version != ''
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/image.yaml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+
+  tag:
+    needs: [plan, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      # Annotated, so that the tag itself lists the updates it released.
+      # github.sha is the same in every job of this run, so the tag lands on
+      # the commit the image was built from.
+      - name: Push the tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          MESSAGE: ${{ needs.plan.outputs.message }}
+        run: |
+          object="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags" \
+            -f tag="$VERSION" -f message="$MESSAGE" -f object="$GITHUB_SHA" -f type=commit \
+            --jq .sha)"
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${VERSION}" -f sha="$object" >/dev/null
+          {
+            echo "### ${VERSION}"
+            echo
+            echo "- tagged: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${VERSION}"
+            echo
+            echo '```'
+            echo "$MESSAGE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
