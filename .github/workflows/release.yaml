@@ -1,11 +1,18 @@
 name: Release
 
-# Once a week, releases the next patch version when every commit since the
-# latest vX.Y.Z tag, merge commits aside, is Renovate's and some of it changed
-# what the image is built from. Anything else is left to a person, who chooses
-# the version and pushes the tag, as before. Doing nothing is a success: the
-# run's log says why nothing was released. `go run ./hack/release-plan` asks
-# the same question on a laptop.
+# Releases the next patch version when every commit since the latest vX.Y.Z
+# tag, merge commits aside, is Renovate's or the vulnerability responder's
+# (fraction-vuln-responder[bot]) and some of it changed what the image is
+# built from. Anything else is left to a person, who chooses the version and
+# pushes the tag, as before. Doing nothing is a success: the run's log says
+# why nothing was released. `go run ./hack/release-plan` asks the same
+# question on a laptop.
+#
+# It runs once a week, for Renovate's updates, and on the merge into main of a
+# pull request from a vuln-responder/ branch, so that a fix of a vulnerability
+# reaches a release without waiting for the week. The responder never tags.
+# When a person's commit holds that release back, the job summary lists the
+# commits and the commands to release by hand.
 #
 # A tag pushed with the run's token starts no workflow, so image.yaml would
 # never see this one. The image is pushed by calling image.yaml first, from
@@ -16,19 +23,33 @@ on:
   schedule:
     - cron: "0 0 * * 1" # Monday 09:00 JST
   workflow_dispatch:
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 # Each job widens this to what it alone needs: the call to image.yaml to write
 # the package, the last job to push the tag.
 permissions: {}
 
+# One release at a time, the weekly one and the one on a fix alike: both read
+# the latest tag and would otherwise push the same version. Every other pull
+# request closed gets a group of its own, so that it never takes the place of
+# a release waiting in the queue.
 concurrency:
-  group: release
+  group: ${{ (github.event_name != 'pull_request' || startsWith(github.event.pull_request.head.ref, 'vuln-responder/')) && 'release' || format('release-skip-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
   plan:
-    # A dispatch can name any branch, but a release is cut from main only.
-    if: github.ref == 'refs/heads/main'
+    # A dispatch can name any branch, but a release is cut from main only. Of
+    # the pull requests closed, only a merged one from a vuln-responder/
+    # branch of this repository releases; one from a fork never does.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.merged
+      && startsWith(github.event.pull_request.head.ref, 'vuln-responder/')
+      && github.event.pull_request.head.repo.full_name == github.repository
+      || github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -36,17 +57,31 @@ jobs:
     outputs:
       version: ${{ steps.plan.outputs.version }}
       message: ${{ steps.plan.outputs.message }}
+      sha: ${{ steps.plan.outputs.sha }}
     steps:
-      # Every tag and the history back to the latest one.
+      # Every tag and the history back to the latest one. The run of a merged
+      # pull request checks out main itself, rather than trusting what
+      # github.sha is for that event; the plan names the commit it read, and
+      # the image and the tag follow it.
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || '' }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - id: plan
-        run: go run ./hack/release-plan -github-output "$GITHUB_OUTPUT"
+        env:
+          TRIGGER: ${{ github.event_name == 'pull_request' && 'vuln-fix' || 'weekly' }}
+        run: |
+          args=(-trigger "$TRIGGER" -github-output "$GITHUB_OUTPUT")
+          # A week without a release is the usual case; a fix that is not
+          # released is worth a summary.
+          if [ "$TRIGGER" = vuln-fix ]; then
+            args+=(-step-summary "$GITHUB_STEP_SUMMARY")
+          fi
+          go run ./hack/release-plan "${args[@]}"
 
   image:
     needs: plan
@@ -57,6 +92,7 @@ jobs:
     uses: ./.github/workflows/image.yaml
     with:
       version: ${{ needs.plan.outputs.version }}
+      sha: ${{ needs.plan.outputs.sha }}
 
   tag:
     needs: [plan, image]
@@ -65,17 +101,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      # Annotated, so that the tag itself lists the updates it released.
-      # github.sha is the same in every job of this run, so the tag lands on
-      # the commit the image was built from.
+      # Annotated, so that the tag itself lists the updates it released. The
+      # plan's sha is the commit the image was built from, so the tag lands
+      # on it.
       - name: Push the tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.plan.outputs.version }}
           MESSAGE: ${{ needs.plan.outputs.message }}
+          SHA: ${{ needs.plan.outputs.sha }}
         run: |
           object="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags" \
-            -f tag="$VERSION" -f message="$MESSAGE" -f object="$GITHUB_SHA" -f type=commit \
+            -f tag="$VERSION" -f message="$MESSAGE" -f object="$SHA" -f type=commit \
             --jq .sha)"
           gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
             -f ref="refs/tags/${VERSION}" -f sha="$object" >/dev/null

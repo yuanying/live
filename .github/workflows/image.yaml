@@ -5,11 +5,11 @@ name: Image
 # that is on main but not yet in a release. A tag publishes a release:
 # v1.0.0 is pushed as 1.0.0, 1.0 and latest.
 #
-# The weekly release (release.yaml) calls this with the version it is about to
-# tag. A tag pushed with the run's token starts no workflow, so the image of
-# that version is pushed here first, from the commit about to be tagged, under
-# the same names a pushed tag would give it, and the tag only follows once it
-# exists.
+# The release (release.yaml) calls this with the version it is about to tag
+# and the commit it tags. A tag pushed with the run's token starts no
+# workflow, so the image of that version is pushed here first, from that
+# commit, under the same names a pushed tag would give it, and the tag only
+# follows once it exists.
 on:
   push:
     branches: [main]
@@ -19,6 +19,12 @@ on:
     inputs:
       version:
         description: The version tag release.yaml is about to push (vX.Y.Z).
+        type: string
+        required: true
+      sha:
+        description: >-
+          The commit release.yaml is about to tag. The release on a merged
+          pull request runs on an event whose github.sha is not that commit.
         type: string
         required: true
 
@@ -38,15 +44,21 @@ jobs:
       contents: read
       packages: write
     steps:
+      # inputs.sha is empty outside the call from release.yaml.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.sha }}
       - uses: docker/setup-buildx-action@v4
       # The default labels carry org.opencontainers.image.source and
       # org.opencontainers.image.revision (the full SHA), which the scanner
       # reads to find the source of the image and the commit it was built from.
+      # The call from release.yaml names that commit, which overrides the
+      # default revision taken from github.sha.
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          labels: ${{ inputs.sha && format('org.opencontainers.image.revision={0}', inputs.sha) || '' }}
           tags: |
             type=semver,pattern={{version}},value=${{ inputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
