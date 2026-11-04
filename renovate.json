@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "The patch, digest and pinning updates Renovate merges wait for the checks on its branch. The Image workflow builds the image on every pull request, and the build runs go test, so a green check means the new version builds and passes the test. What is merged this way reaches a release on its own through the weekly release (the Release workflow), which tags the next patch version when everything since the latest tag is Renovate's",
-  "extends": ["github>yuanying/renovate-config", "github>yuanying/renovate-config:automerge-patch"],
+  "description": "Every update gets GitHub's auto-merge through platform-automerge and is merged once a code owner in .github/CODEOWNERS approves it and the checks on its branch pass. The Image workflow builds the image on every pull request, and the build runs go test, so a green check means the new version builds and passes the test. What is merged this way reaches a release on its own through the weekly release (the Release workflow), which tags the next patch version when everything since the latest tag is Renovate's",
+  "extends": ["github>yuanying/renovate-config", "github>yuanying/renovate-config:platform-automerge"],
   "packageRules": [
     {
       "description": "The base images of the Dockerfile are pinned to a digest, so that an image built twice from the same commit is built on the same base, and a rebuilt base arrives as a pull request whose checks build the image again",
