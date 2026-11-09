@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Every update gets GitHub's auto-merge through platform-automerge and is merged once a code owner in .github/CODEOWNERS approves it and the checks on its branch pass. The Image workflow builds the image on every pull request, and the build runs go test, so a green check means the new version builds and passes the test. What is merged this way reaches a release on its own through the weekly release (the Release workflow), which tags the next patch version when everything since the latest tag is Renovate's",
+  "description": "Every update gets GitHub's auto-merge through platform-automerge and is merged once a code owner in .github/CODEOWNERS approves it and the checks on its branch pass. The Image workflow builds the image on every pull request, and the build runs go test, so a green check means the new version builds and passes the test. What is merged this way reaches a release on its own through the weekly release (the Release workflow), which tags the next patch version when everything since the latest tag is Renovate's. gomodTidy runs go mod tidy after every Go update, and gomodUpdateImportPaths lets a major Go module update rewrite the import paths; without it Renovate skips go mod tidy on major updates and leaves go.mod untidy",
   "extends": ["github>yuanying/renovate-config", "github>yuanying/renovate-config:platform-automerge"],
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "packageRules": [
     {
       "description": "The base images of the Dockerfile are pinned to a digest, so that an image built twice from the same commit is built on the same base, and a rebuilt base arrives as a pull request whose checks build the image again",
